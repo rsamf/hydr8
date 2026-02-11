@@ -1,6 +1,6 @@
 [project]
 name = "hydr8"
-version = "0.1.0"
+version = "0.2.0"
 description = "Decorator-based config injection for Hydra"
 readme = "README.md"
 requires-python = ">=3.8"

@@ -48,7 +48,7 @@ db:
 
 #### Explicit path
 
-Pass a dot-separated path to resolve a specific config node. Config keys are matched to function parameter names. Extra config keys that don't match any parameter are silently ignored.
+Pass a dot-separated path to resolve a specific config node. Config keys are matched to function parameter names. Extra config keys that don't match any named parameter are silently ignored (unless the function accepts `**kwargs` — see below).
 
 ```python
 @hydr8.use("db.postgres")
@@ -130,6 +130,19 @@ def connect(config: dict):
     host = config["host"]
     port = config["port"]
     ...
+```
+
+#### `**kwargs` passthrough
+
+When the decorated function accepts `**kwargs`, config keys that don't match any named parameter automatically flow into `**kwargs`:
+
+```python
+@hydr8.use("db")
+def connect(host: str, **kwargs):
+    # host matched by name; port and any other config keys land in kwargs
+    print(host, kwargs)
+
+connect()  # host="localhost", kwargs={"port": 5432}
 ```
 
 #### Caller overrides
