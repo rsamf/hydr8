@@ -3,8 +3,8 @@ name = "hydr8"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = ["omegaconf>=2.3"]
+requires-python = ">=3.8"
+dependencies = ["omegaconf>=2.1"]
 
 [build-system]
 requires = ["hatchling"]
