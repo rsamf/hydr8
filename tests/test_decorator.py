@@ -236,3 +236,199 @@ def test_function_lazy_resolution():
     # Config not initialized yet — no error until access
     init(OmegaConf.create({"db": {"host": "localhost"}}))
     assert db["host"] == "localhost"
+
+
+# ---------- keyword argument edge cases ----------
+
+
+def test_single_kwarg_override():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(host: str, port: int):
+        return host, port
+
+    assert connect(port=9999) == ("localhost", 9999)
+
+
+def test_positional_first_kwarg_second():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432, "timeout": 30}}))
+
+    @use("db")
+    def connect(host: str, port: int, timeout: int):
+        return host, port, timeout
+
+    assert connect("remote", timeout=60) == ("remote", 5432, 60)
+
+
+def test_all_kwargs():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(host: str, port: int):
+        return host, port
+
+    assert connect(host="remote", port=9999) == ("remote", 9999)
+
+
+def test_as_dict_caller_kwarg_override():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db", as_dict="config")
+    def connect(config: dict):
+        return config
+
+    assert connect(config={"custom": True}) == {"custom": True}
+
+
+def test_as_dict_with_other_params_kwarg():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db", as_dict="config")
+    def connect(name: str, config: dict):
+        return name, config
+
+    result = connect(name="mydb")
+    assert result == ("mydb", {"host": "localhost", "port": 5432})
+
+
+def test_as_dict_with_positional_and_kwarg():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db", as_dict="config")
+    def connect(name: str, config: dict):
+        return name, config
+
+    result = connect("mydb", config={"custom": True})
+    assert result == ("mydb", {"custom": True})
+
+
+def test_method_kwarg_override():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    class Client:
+        @use("db")
+        def connect(self, host: str, port: int):
+            return host, port
+
+    c = Client()
+    assert c.connect(host="remote") == ("remote", 5432)
+
+
+def test_method_all_kwargs():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    class Client:
+        @use("db")
+        def connect(self, host: str, port: int):
+            return host, port
+
+    c = Client()
+    assert c.connect(host="remote", port=9999) == ("remote", 9999)
+
+
+def test_keyword_only_params():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(*, host: str, port: int):
+        return host, port
+
+    assert connect(host="remote") == ("remote", 5432)
+
+
+def test_default_params_with_kwarg():
+    """Config should still inject into params with defaults when not all params supplied."""
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(host: str, port: int = 3306):
+        return host, port
+
+    # port has a default, but config value should override it
+    assert connect(host="remote") == ("remote", 5432)
+
+
+def test_default_params_positional_with_kwarg():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432, "timeout": 30}}))
+
+    @use("db")
+    def connect(host: str, port: int, timeout: int = 10):
+        return host, port, timeout
+
+    # timeout has default, but config should still inject it
+    assert connect("remote", port=9999) == ("remote", 9999, 30)
+
+
+def test_all_params_supplied_skips_config():
+    """When every param (including optional) is supplied, skip config entirely."""
+    @use("db")
+    def connect(host: str, port: int = 3306):
+        return host, port
+
+    assert connect("localhost", 5432) == ("localhost", 5432)
+    assert connect(host="localhost", port=5432) == ("localhost", 5432)
+
+
+# ---------- **kwargs parameter ----------
+
+
+def test_var_kwargs_no_injection():
+    """Config keys flow into **kwargs when there are no named params."""
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(**kwargs):
+        return kwargs
+
+    assert connect() == {"host": "localhost", "port": 5432}
+
+
+def test_var_kwargs_with_named_params():
+    """Named params get injected; extra config keys flow into **kwargs."""
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(host: str, **kwargs):
+        return host, kwargs
+
+    assert connect() == ("localhost", {"port": 5432})
+    assert connect(extra="val") == ("localhost", {"port": 5432, "extra": "val"})
+    assert connect(host="remote") == ("remote", {"port": 5432})
+    assert connect(host="remote", extra="val") == ("remote", {"port": 5432, "extra": "val"})
+
+
+def test_var_kwargs_caller_kwarg_passed_through():
+    """Caller kwargs that don't match named params pass through to **kwargs."""
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db")
+    def connect(host: str, port: int, **kwargs):
+        return host, port, kwargs
+
+    assert connect(extra="val") == ("localhost", 5432, {"extra": "val"})
+    assert connect(host="remote", extra="val") == ("remote", 5432, {"extra": "val"})
+
+
+def test_as_dict_with_var_kwargs():
+    """as_dict injects into **kwargs as a named kwarg when the param doesn't exist."""
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db", as_dict="config")
+    def connect(**kwargs):
+        return kwargs
+
+    result = connect()
+    assert result == {"config": {"host": "localhost", "port": 5432}}
+
+
+def test_as_dict_with_named_and_var_kwargs():
+    init(OmegaConf.create({"db": {"host": "localhost", "port": 5432}}))
+
+    @use("db", as_dict="config")
+    def connect(name: str, **kwargs):
+        return name, kwargs
+
+    assert connect("mydb") == ("mydb", {"config": {"host": "localhost", "port": 5432}})
+    assert connect("mydb", config={"custom": True}) == ("mydb", {"config": {"custom": True}})
+    assert connect("mydb", extra="val") == ("mydb", {"config": {"host": "localhost", "port": 5432}, "extra": "val"})

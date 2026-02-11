@@ -38,23 +38,31 @@ class _ConfigProxy:
         scope = self._scope
         sig = inspect.signature(fn)
         param_names = set(sig.parameters)
+        named_params = {
+            name
+            for name, p in sig.parameters.items()
+            if p.kind
+            not in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            )
+        }
+        has_var_keyword = any(
+            p.kind is inspect.Parameter.VAR_KEYWORD
+            for p in sig.parameters.values()
+        )
 
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             bound = sig.bind_partial(*args, **kwargs)
             supplied = set(bound.arguments)
 
-            required = {
-                name
-                for name, p in sig.parameters.items()
-                if p.default is inspect.Parameter.empty
-                and p.kind
-                not in (
-                    inspect.Parameter.VAR_POSITIONAL,
-                    inspect.Parameter.VAR_KEYWORD,
-                )
-            }
-            if required <= supplied:
+            as_dict_supplied = (
+                as_dict is None
+                or as_dict in supplied
+                or as_dict in kwargs
+            )
+            if named_params <= supplied and as_dict_supplied and not has_var_keyword:
                 return fn(*args, **kwargs)
 
             cfg = get()
@@ -64,12 +72,13 @@ class _ConfigProxy:
                 resolved = resolve(cfg, path)
 
             if as_dict is not None:
-                if as_dict not in supplied:
+                if as_dict not in supplied and as_dict not in kwargs:
                     kwargs[as_dict] = resolved
             else:
                 for key, value in resolved.items():
-                    if key in param_names and key not in supplied:
-                        kwargs[key] = value
+                    if key not in supplied and key not in kwargs:
+                        if key in param_names or has_var_keyword:
+                            kwargs[key] = value
 
             return fn(*args, **kwargs)
 
