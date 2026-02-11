@@ -13,9 +13,10 @@ F = TypeVar("F", bound=Callable[..., Any])
 class _ConfigProxy:
     """Returned by ``use()``. Acts as both a decorator and a lazy config dict."""
 
-    def __init__(self, path: str | None, as_dict: str | None) -> None:
+    def __init__(self, path: str | None, as_dict: str | None, scope: str) -> None:
         self._path = path
         self._as_dict = as_dict
+        self._scope = scope
         self._resolved: dict[str, Any] | None = None
 
     def _resolve(self) -> dict[str, Any]:
@@ -34,6 +35,7 @@ class _ConfigProxy:
     def __call__(self, fn: F) -> F:
         path = self._path
         as_dict = self._as_dict
+        scope = self._scope
         sig = inspect.signature(fn)
         param_names = set(sig.parameters)
 
@@ -57,7 +59,7 @@ class _ConfigProxy:
 
             cfg = get()
             if path is None:
-                resolved = resolve_auto(cfg, fn)
+                resolved = resolve_auto(cfg, fn, scope)
             else:
                 resolved = resolve(cfg, path)
 
@@ -103,7 +105,12 @@ class _ConfigProxy:
             return f"_ConfigProxy(path={self._path!r})"
 
 
-def use(path: str | None = None, *, as_dict: str | None = None) -> _ConfigProxy:
+def use(
+    path: str | None = None,
+    *,
+    as_dict: str | None = None,
+    scope: str = "module",
+) -> _ConfigProxy:
     """Access a config sub-tree — as a decorator or a function.
 
     Returns a proxy that can be used in two ways:
@@ -118,10 +125,20 @@ def use(path: str | None = None, *, as_dict: str | None = None) -> _ConfigProxy:
         connect(host="other")  # caller args take precedence
 
     When ``path`` is ``None`` (the default), the config path is derived
-    automatically from the function's module and qualname::
+    automatically from the function's module path.  If the first segment
+    of ``__module__`` isn't a top-level config key it is treated as the
+    project name and stripped, so auto-resolve works whether you run with
+    ``python -m`` or ``python file.py``::
 
         # In myproject/data/loaders.py
         @use()
+        def build_loader(batch_size: int, shuffle: bool):
+            ...
+        # resolves to cfg.data.loaders (scope="module", the default)
+
+    With ``scope="fn"``, the function's ``__qualname__`` is appended::
+
+        @use(scope="fn")
         def build_loader(batch_size: int, shuffle: bool):
             ...
         # resolves to cfg.data.loaders.build_loader
@@ -150,8 +167,11 @@ def use(path: str | None = None, *, as_dict: str | None = None) -> _ConfigProxy:
     Args:
         path: Dot-separated config path (e.g. ``"db.postgres"``). When
             ``None``, the path is derived from the decorated function's
-            module and qualname (decorator mode only).
+            module (decorator mode only).
         as_dict: When set, the resolved sub-config is passed as a single
             kwarg with this name (decorator mode only).
+        scope: Controls auto-resolve granularity (decorator mode only).
+            ``"module"`` (default) resolves to the module's config node.
+            ``"fn"`` appends the function's qualname.
     """
-    return _ConfigProxy(path, as_dict)
+    return _ConfigProxy(path, as_dict, scope)

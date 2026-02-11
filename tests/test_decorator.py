@@ -78,18 +78,32 @@ def test_as_dict_mode():
 # ---------- auto ----------
 
 
-def test_auto():
-    # The test function lives in module "tests.test_decorator" with qualname
-    # "test_auto.<locals>.process". After stripping top-level package
-    # ("tests"), the path is "test_decorator.test_auto.<locals>.process".
+def test_auto_module_scope():
+    # The test function lives in module "tests.test_decorator".
+    # "tests" is not a top-level config key, so it gets stripped.
+    # scope="module" (default) resolves to cfg.test_decorator.
     cfg = OmegaConf.create({
-        "test_decorator": {
-            "test_auto": {"<locals>": {"process": {"x": 42}}},
-        },
+        "test_decorator": {"x": 42},
     })
     init(cfg)
 
     @use()
+    def process(x: int):
+        return x
+
+    assert process() == 42
+
+
+def test_auto_fn_scope():
+    # scope="fn" appends qualname: test_decorator.test_auto_fn_scope.<locals>.process
+    cfg = OmegaConf.create({
+        "test_decorator": {
+            "test_auto_fn_scope": {"<locals>": {"process": {"x": 42}}},
+        },
+    })
+    init(cfg)
+
+    @use(scope="fn")
     def process(x: int):
         return x
 
@@ -129,10 +143,30 @@ def test_extra_config_keys_ignored():
 # ---------- class method decoration ----------
 
 
-def test_class_method():
+def test_class_method_module_scope():
+    # scope="module" (default) resolves to cfg.test_decorator.
+    # Both host and port are at the module level.
+    cfg = OmegaConf.create({
+        "test_decorator": {"host": "localhost", "port": 5432},
+    })
+    init(cfg)
+
+    class Client:
+        @use()
+        def __init__(self, host: str, port: int):
+            self.host = host
+            self.port = port
+
+    c = Client()
+    assert c.host == "localhost"
+    assert c.port == 5432
+
+
+def test_class_method_fn_scope():
+    # scope="fn" resolves to cfg.test_decorator.test_class_method_fn_scope.<locals>.Client.__init__
     cfg = OmegaConf.create({
         "test_decorator": {
-            "test_class_method": {
+            "test_class_method_fn_scope": {
                 "<locals>": {
                     "Client": {"__init__": {"host": "localhost", "port": 5432}},
                 },
@@ -142,7 +176,7 @@ def test_class_method():
     init(cfg)
 
     class Client:
-        @use()
+        @use(scope="fn")
         def __init__(self, host: str, port: int):
             self.host = host
             self.port = port

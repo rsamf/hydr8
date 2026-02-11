@@ -44,30 +44,68 @@ def _make_fn(module: str, qualname: str):
     return dummy
 
 
-def test_resolve_auto_function():
-    cfg = OmegaConf.create({
-        "data": {"loaders": {"build_loader": {"batch_size": 32}}},
-    })
-    fn = _make_fn("myproject.data.loaders", "build_loader")
-    result = resolve_auto(cfg, fn)
-    assert result == {"batch_size": 32}
-
-
-def test_resolve_auto_method():
-    cfg = OmegaConf.create({
-        "db": {"client": {"Client": {"__init__": {"host": "localhost", "port": 5432}}}},
-    })
-    fn = _make_fn("myproject.db.client", "Client.__init__")
-    result = resolve_auto(cfg, fn)
-    assert result == {"host": "localhost", "port": 5432}
-
-
 def test_resolve_list_index():
     cfg = OmegaConf.create({
         "db": {"foo": [{"host": "a"}, {"host": "b"}, {"host": "c", "port": 5432}]},
     })
     result = resolve(cfg, "db.foo[2]")
     assert result == {"host": "c", "port": 5432}
+
+
+# ---------- resolve_auto() scope="module" (default) ----------
+
+
+def test_resolve_auto_module_scope_with_project_prefix():
+    """python -m myproject.data.loaders — strips 'myproject'."""
+    cfg = OmegaConf.create({
+        "data": {"loaders": {"batch_size": 32}},
+    })
+    fn = _make_fn("myproject.data.loaders", "build_loader")
+    result = resolve_auto(cfg, fn)
+    assert result == {"batch_size": 32}
+
+
+def test_resolve_auto_module_scope_without_project_prefix():
+    """python myproject/data/loaders.py — no prefix to strip."""
+    cfg = OmegaConf.create({
+        "data": {"loaders": {"batch_size": 32}},
+    })
+    fn = _make_fn("data.loaders", "build_loader")
+    result = resolve_auto(cfg, fn)
+    assert result == {"batch_size": 32}
+
+
+# ---------- resolve_auto() scope="fn" ----------
+
+
+def test_resolve_auto_fn_scope():
+    cfg = OmegaConf.create({
+        "data": {"loaders": {"build_loader": {"batch_size": 32}}},
+    })
+    fn = _make_fn("myproject.data.loaders", "build_loader")
+    result = resolve_auto(cfg, fn, scope="fn")
+    assert result == {"batch_size": 32}
+
+
+def test_resolve_auto_fn_scope_method():
+    cfg = OmegaConf.create({
+        "db": {"client": {"Client": {"__init__": {"host": "localhost", "port": 5432}}}},
+    })
+    fn = _make_fn("myproject.db.client", "Client.__init__")
+    result = resolve_auto(cfg, fn, scope="fn")
+    assert result == {"host": "localhost", "port": 5432}
+
+
+def test_resolve_auto_fn_scope_without_project_prefix():
+    cfg = OmegaConf.create({
+        "data": {"loaders": {"build_loader": {"batch_size": 32}}},
+    })
+    fn = _make_fn("data.loaders", "build_loader")
+    result = resolve_auto(cfg, fn, scope="fn")
+    assert result == {"batch_size": 32}
+
+
+# ---------- resolve_auto() errors ----------
 
 
 def test_resolve_auto_missing_raises():

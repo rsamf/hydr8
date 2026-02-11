@@ -20,24 +20,35 @@ def resolve(cfg: DictConfig, path: str) -> dict[str, Any]:
     return OmegaConf.to_container(node, resolve=True)  # type: ignore[return-value]
 
 
-def resolve_auto(cfg: DictConfig, fn: Callable[..., Any]) -> dict[str, Any]:
-    """Derive the config path from *fn*'s module and qualname, then resolve.
+def resolve_auto(
+    cfg: DictConfig, fn: Callable[..., Any], scope: str = "module"
+) -> dict[str, Any]:
+    """Derive the config path from *fn*'s module (and optionally qualname), then resolve.
 
-    The first segment of ``__module__`` is stripped (the top-level package),
-    and ``__qualname__`` is appended.  For example::
+    If the first segment of ``__module__`` is not a top-level key in *cfg*,
+    it is assumed to be the project/package name and is stripped.  This makes
+    auto-resolve work regardless of whether the code was invoked with
+    ``python -m`` (which includes the package prefix) or ``python file.py``
+    (which does not).
 
-        myproject.data.loaders.build_loader
-        -> data.loaders.build_loader
+    When *scope* is ``"module"`` (the default), only the module path is used::
+
+        myproject.data.loaders -> data.loaders
+
+    When *scope* is ``"fn"``, the function's ``__qualname__`` is appended::
+
+        myproject.data.loaders + build_loader -> data.loaders.build_loader
     """
-    module = fn.__module__
-    qualname = fn.__qualname__
+    parts = fn.__module__.split(".")
 
-    # Strip top-level package
-    parts = module.split(".")
-    if len(parts) > 1:
-        module_tail = ".".join(parts[1:])
+    # If the first segment isn't a top-level config key, it's the project
+    # name — strip it.
+    if len(parts) > 1 and parts[0] not in cfg:
+        parts = parts[1:]
+
+    if scope == "fn":
+        path = ".".join(parts) + "." + fn.__qualname__
     else:
-        module_tail = parts[0]
+        path = ".".join(parts)
 
-    path = f"{module_tail}.{qualname}"
     return resolve(cfg, path)

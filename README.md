@@ -69,14 +69,43 @@ def connect(host: str, port: int):
 
 #### Implicit path (auto-resolve)
 
-When no path is given, hydr8 derives it from the function's `__module__` and `__qualname__`, stripping the top-level package:
+When no path is given, hydr8 derives it from the function's `__module__`. If the first segment of the module isn't a top-level config key, it's treated as the project name and stripped — so auto-resolve works whether you run with `python -m` or `python file.py`:
 
 ```python
 # In myproject/data/loaders.py
 @hydr8.use()
 def build_loader(batch_size: int, shuffle: bool):
     ...
+# Resolves to cfg.data.loaders
+```
+
+```yaml
+# config.yaml
+data:
+  loaders:
+    batch_size: 32
+    shuffle: true
+```
+
+By default, `scope="module"` — the path resolves to the module's config node, and config keys are matched to function parameters. Multiple functions in the same module share the same config node.
+
+With `scope="fn"`, the function's qualname is appended to the path:
+
+```python
+# In myproject/data/loaders.py
+@hydr8.use(scope="fn")
+def build_loader(batch_size: int, shuffle: bool):
+    ...
 # Resolves to cfg.data.loaders.build_loader
+```
+
+```yaml
+# config.yaml
+data:
+  loaders:
+    build_loader:
+      batch_size: 32
+      shuffle: true
 ```
 
 This works with methods too:
@@ -84,7 +113,7 @@ This works with methods too:
 ```python
 # In myproject/db/client.py
 class Client:
-    @hydr8.use()
+    @hydr8.use(scope="fn")
     def __init__(self, host: str, port: int):
         self.host = host
         self.port = port
@@ -172,4 +201,4 @@ def test_connect():
 | `init(cfg)` | Store the config globally (accepts any dict or OmegaConf DictConfig) |
 | `get()` | Retrieve the stored config (raises `RuntimeError` if uninitialized) |
 | `override(overrides)` | Context manager that temporarily replaces the config |
-| `use(path, *, as_dict)` | Decorator or direct config accessor for a config sub-tree |
+| `use(path, *, as_dict, scope)` | Decorator or direct config accessor for a config sub-tree |
