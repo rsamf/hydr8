@@ -2,7 +2,50 @@
 
 Decorator-based config injection for [Hydra](https://hydra.cc/).
 
-hydr8 lets you push Hydra config (or any config as long as it's a dict) values into function parameters automatically, so your functions stay clean and testable without manually threading `cfg` everywhere.
+hydr8 lets you push config values into function parameters automatically, so your functions stay clean and testable without manually threading `cfg` everywhere.
+
+## Why use hydr8
+
+### Testing
+
+Decorated functions are trivially testable. Just pass arguments directly and config injection is skipped entirely. No mocking, no setup, no `init()` call needed:
+
+```python
+@hydr8.use("db")
+def connect(host: str, port: int):
+    return f"{host}:{port}"
+
+# In tests — call it like a normal function
+assert connect("localhost", 5432) == "localhost:5432"
+```
+
+### DRY
+
+Also, hydr8 stays DRY. Without hydr8, you end up passing `cfg` through every layer and repeating `cfg.db.host`, `cfg.db.port` everywhere:
+
+```python
+# Before:
+def connect(cfg):
+    host = cfg.db.host
+    port = cfg.db.port
+    ...
+
+def main(cfg):
+    connect(cfg)
+```
+
+With hydr8, functions declare what they need and get it automatically:
+
+```python
+# After:
+@hydr8.use("db")
+def connect(host: str, port: int):
+    ...
+
+def main(cfg):
+    hydr8.init(cfg)
+    connect()
+```
 
 ## Installation
 
